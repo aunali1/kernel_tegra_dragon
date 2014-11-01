@@ -313,7 +313,7 @@ int reboot_pid_ns(struct pid_namespace *pid_ns, int cmd)
 	return 0;
 }
 
-static void *pidns_get(struct task_struct *task)
+static struct ns_common *pidns_get(struct task_struct *task)
 {
 	struct pid_namespace *ns;
 
@@ -326,12 +326,12 @@ static void *pidns_get(struct task_struct *task)
 	return ns;
 }
 
-static void pidns_put(void *ns)
+static void pidns_put(struct ns_common *ns)
 {
 	put_pid_ns(ns);
 }
 
-static int pidns_install(struct nsproxy *nsproxy, void *ns)
+static int pidns_install(struct nsproxy *nsproxy, struct ns_common *ns)
 {
 	struct pid_namespace *active = task_active_pid_ns(current);
 	struct pid_namespace *ancestor, *new = ns;
@@ -362,19 +362,12 @@ static int pidns_install(struct nsproxy *nsproxy, void *ns)
 	return 0;
 }
 
-static unsigned int pidns_inum(void *ns)
-{
-	struct pid_namespace *pid_ns = ns;
-	return pid_ns->ns.inum;
-}
-
 const struct proc_ns_operations pidns_operations = {
 	.name		= "pid",
 	.type		= CLONE_NEWPID,
 	.get		= pidns_get,
 	.put		= pidns_put,
 	.install	= pidns_install,
-	.inum		= pidns_inum,
 };
 
 static __init int pid_namespaces_init(void)

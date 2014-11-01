@@ -88,7 +88,7 @@ void free_uts_ns(struct kref *kref)
 	kfree(ns);
 }
 
-static void *utsns_get(struct task_struct *task)
+static struct ns_common *utsns_get(struct task_struct *task)
 {
 	struct uts_namespace *ns = NULL;
 	struct nsproxy *nsproxy;
@@ -104,12 +104,12 @@ static void *utsns_get(struct task_struct *task)
 	return ns;
 }
 
-static void utsns_put(void *ns)
+static void utsns_put(struct ns_common *ns)
 {
 	put_uts_ns(ns);
 }
 
-static int utsns_install(struct nsproxy *nsproxy, void *new)
+static int utsns_install(struct nsproxy *nsproxy, struct ns_common *new)
 {
 	struct uts_namespace *ns = new;
 
@@ -123,18 +123,10 @@ static int utsns_install(struct nsproxy *nsproxy, void *new)
 	return 0;
 }
 
-static unsigned int utsns_inum(void *vp)
-{
-	struct uts_namespace *ns = vp;
-
-	return ns->ns.inum;
-}
-
 const struct proc_ns_operations utsns_operations = {
 	.name		= "uts",
 	.type		= CLONE_NEWUTS,
 	.get		= utsns_get,
 	.put		= utsns_put,
 	.install	= utsns_install,
-	.inum		= utsns_inum,
 };

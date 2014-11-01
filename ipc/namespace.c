@@ -149,7 +149,7 @@ void put_ipc_ns(struct ipc_namespace *ns)
 	}
 }
 
-static void *ipcns_get(struct task_struct *task)
+static struct ns_common *ipcns_get(struct task_struct *task)
 {
 	struct ipc_namespace *ns = NULL;
 	struct nsproxy *nsproxy;
@@ -163,12 +163,12 @@ static void *ipcns_get(struct task_struct *task)
 	return ns;
 }
 
-static void ipcns_put(void *ns)
+static void ipcns_put(struct ns_common *ns)
 {
 	return put_ipc_ns(ns);
 }
 
-static int ipcns_install(struct nsproxy *nsproxy, void *new)
+static int ipcns_install(struct nsproxy *nsproxy, struct ns_common *new)
 {
 	struct ipc_namespace *ns = new;
 	if (!ns_capable(ns->user_ns, CAP_SYS_ADMIN) ||
@@ -182,18 +182,10 @@ static int ipcns_install(struct nsproxy *nsproxy, void *new)
 	return 0;
 }
 
-static unsigned int ipcns_inum(void *vp)
-{
-	struct ipc_namespace *ns = vp;
-
-	return ns->ns.inum;
-}
-
 const struct proc_ns_operations ipcns_operations = {
 	.name		= "ipc",
 	.type		= CLONE_NEWIPC,
 	.get		= ipcns_get,
 	.put		= ipcns_put,
 	.install	= ipcns_install,
-	.inum		= ipcns_inum,
 };
