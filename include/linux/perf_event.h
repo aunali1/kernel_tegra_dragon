@@ -520,7 +520,6 @@ struct perf_event_context {
 	u64				generation;
 	int				pin_count;
 	int				nr_cgroups;	 /* cgroup evts */
-	int				nr_branch_stack; /* branch_stack evt */
 	void				*task_ctx_data; /* pmu specific data */
 	struct rcu_head			rcu_head;
 
