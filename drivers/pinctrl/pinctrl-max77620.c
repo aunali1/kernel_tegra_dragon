@@ -58,7 +58,7 @@ struct max77620_pin_function {
 	int mux_option;
 };
 
-static const struct pinconf_generic_dt_params max77620_dt_params[] = {
+static const struct pinconf_generic_params max77620_dt_params[] = {
 	{ "maxim,fps-source",            MAX77620_FPS_SOURCE,           0},
 	{ "maxim,fps-power-up-period",   MAX77620_FPS_POWER_ON_PERIOD,  0},
 	{ "maxim,fps-power-down-period", MAX77620_FPS_POWER_OFF_PERIOD, 0},
@@ -362,9 +362,9 @@ static struct pinctrl_desc max77620_pinctrl_desc = {
 	.pctlops = &max77620_pinctrl_ops,
 	.pmxops = &max77620_pinmux_ops,
 	.confops = &max77620_pinconf_ops,
-	.num_dt_params = ARRAY_SIZE(max77620_dt_params),
-	.params = max77620_dt_params,
-	.conf_items = max77620_conf_items,
+	.num_custom_params = ARRAY_SIZE(max77620_dt_params),
+	.custom_params = max77620_dt_params,
+	.custom_conf_items = max77620_conf_items,
 	.owner = THIS_MODULE,
 };
 
