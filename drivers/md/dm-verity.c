@@ -931,17 +931,6 @@ static char *positional_args(unsigned argc, char **argv,
 		return "Invalid hash start";
 	args->hash_start_block = num_ll;
 
-	if (argc > DM_VERITY_NUM_POSITIONAL_ARGS) {
-		if (sscanf(argv[10], "%d%c", &num, &dummy) != 1 ||
-			num < DM_VERITY_MODE_EIO ||
-			num > DM_VERITY_MODE_RESTART) {
-			ti->error = "Invalid mode";
-			r = -EINVAL;
-			goto bad;
-		}
-		v->mode = num;
-	}
-
 	args->algorithm = argv[7];
 	args->digest = argv[8];
 	args->salt = argv[9];
@@ -1143,6 +1132,17 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 			goto bad;
 		}
 	}
+
+	if (argc > DM_VERITY_NUM_POSITIONAL_ARGS) {
+                if (sscanf(argv[10], "%d%c", &num, &dummy) != 1 ||
+                        num < DM_VERITY_MODE_EIO ||
+                        num > DM_VERITY_MODE_RESTART) {
+                        ti->error = "Invalid mode";
+                        r = -EINVAL;
+                        goto bad;
+                }
+                v->mode = num;
+        }
 
 	v->hash_per_block_bits =
 		__fls((1 << v->hash_dev_block_bits) / v->digest_size);
