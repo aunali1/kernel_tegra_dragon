@@ -21,21 +21,37 @@
 #include <linux/delay.h>
 #include <linux/device-mapper.h>
 #include <linux/mount.h>
+#include <linux/reboot.h>
 #include <crypto/hash.h>
 #include "dm-verity.h"
 
 #define DM_MSG_PREFIX			"verity"
+
+#define DM_VERITY_ENV_LENGTH		42
+#define DM_VERITY_ENV_VAR_NAME		"VERITY_ERR_BLOCK_NR"
 
 #define DM_VERITY_IO_VEC_INLINE		16
 #define DM_VERITY_MEMPOOL_SIZE		4
 #define DM_VERITY_DEFAULT_PREFETCH_SIZE	262144
 
 #define DM_VERITY_MAX_LEVELS		63
+#define DM_VERITY_MAX_CORRUPTED_ERRS	100
 #define DM_VERITY_NUM_POSITIONAL_ARGS	10
 
 static unsigned dm_verity_prefetch_cluster = DM_VERITY_DEFAULT_PREFETCH_SIZE;
 
 module_param_named(prefetch_cluster, dm_verity_prefetch_cluster, uint, S_IRUGO | S_IWUSR);
+
+enum verity_mode {
+	DM_VERITY_MODE_EIO = 0,
+	DM_VERITY_MODE_LOGGING = 1,
+	DM_VERITY_MODE_RESTART = 2
+};
+
+enum verity_block_type {
+	DM_VERITY_BLOCK_TYPE_DATA,
+	DM_VERITY_BLOCK_TYPE_METADATA
+};
 
 struct dm_verity {
 	struct dm_dev *data_dev;
@@ -59,6 +75,8 @@ struct dm_verity {
 	unsigned digest_size;	/* digest size for the current hash algorithm */
 	unsigned shash_descsize;/* the size of temporary space for crypto */
 	int hash_failed;	/* set to 1 if hash of any block failed */
+	enum verity_mode mode;	/* mode for handling verification errors */
+	unsigned corrupted_errs;/* Number of errors for corrupted blocks */
 	int error_behavior;	/* selects error behavior on io erros */
 
 	mempool_t *vec_mempool;	/* mempool of bio vector */
@@ -293,6 +311,54 @@ static void verity_hash_at_level(struct dm_verity *v, sector_t block, int level,
 }
 
 /*
+ * Handle verification errors.
+ */
+static int verity_handle_err(struct dm_verity *v, enum verity_block_type type,
+				 unsigned long long block)
+{
+	char verity_env[DM_VERITY_ENV_LENGTH];
+	char *envp[] = { verity_env, NULL };
+	const char *type_str = "";
+	struct mapped_device *md = dm_table_get_md(v->ti->table);
+
+	if (v->corrupted_errs >= DM_VERITY_MAX_CORRUPTED_ERRS)
+		goto out;
+
+	++v->corrupted_errs;
+
+	switch (type) {
+	case DM_VERITY_BLOCK_TYPE_DATA:
+		type_str = "data";
+		break;
+	case DM_VERITY_BLOCK_TYPE_METADATA:
+		type_str = "metadata";
+		break;
+	default:
+		BUG();
+	}
+
+	DMERR_LIMIT("%s: %s block %llu is corrupted", v->data_dev->name,
+                type_str, block);
+
+	if (v->corrupted_errs == DM_VERITY_MAX_CORRUPTED_ERRS)
+		DMERR("%s: reached maximum errors", v->data_dev->name);
+
+	snprintf(verity_env, DM_VERITY_ENV_LENGTH, "%s=%d,%llu",
+		DM_VERITY_ENV_VAR_NAME, type, block);
+
+	kobject_uevent_env(&disk_to_dev(dm_disk(md))->kobj, KOBJ_CHANGE, envp);
+
+out:
+	if (v->mode == DM_VERITY_MODE_LOGGING)
+		return 0;
+
+	if (v->mode == DM_VERITY_MODE_RESTART)
+		kernel_restart("dm-verity device corrupted");
+
+	return 1;
+}
+
+/*
  * Verify hash of a metadata block pertaining to the specified data block
  * ("block" argument) at a specified level ("level" argument).
  *
@@ -369,11 +435,13 @@ static int verity_verify_level(struct dm_verity_io *io, sector_t block,
 			goto release_ret_r;
 		}
 		if (unlikely(memcmp(result, io_want_digest(v, io), v->digest_size))) {
-			DMERR_LIMIT("metadata block %llu is corrupted",
-				(unsigned long long)hash_block);
 			v->hash_failed = 1;
-			r = -EIO;
-			goto release_ret_r;
+			
+			if (verity_handle_err(v, DM_VERITY_BLOCK_TYPE_METADATA,
+					      hash_block)) {
+				r = -EIO;
+				goto release_ret_r;
+			}
 		} else
 			aux->hash_verified = 1;
 	}
@@ -485,10 +553,11 @@ test_block_hash:
 			return r;
 		}
 		if (unlikely(memcmp(result, io_want_digest(v, io), v->digest_size))) {
-			DMERR_LIMIT("data block %llu is corrupted",
-				(unsigned long long)(io->block + b));
 			v->hash_failed = 1;
-			return -EIO;
+
+			if (verity_handle_err(v, DM_VERITY_BLOCK_TYPE_DATA,
+					      io->block + b))
+				return -EIO;
 		}
 	}
 
@@ -825,8 +894,8 @@ static char *positional_args(unsigned argc, char **argv,
 	unsigned long long num_ll;
 	char dummy;
 
-	if (argc != DM_VERITY_NUM_POSITIONAL_ARGS)
-		return "Invalid argument count: exactly 10 arguments required";
+	if (argc < DM_VERITY_NUM_POSITIONAL_ARGS || argc > (DM_VERITY_NUM_POSITIONAL_ARGS+1))
+		return "Invalid argument count: 10-11 arguments required";
 
 	if (sscanf(argv[0], "%d%c", &num, &dummy) != 1 ||
 	    num < 0 || num > 1)
@@ -862,6 +931,16 @@ static char *positional_args(unsigned argc, char **argv,
 		return "Invalid hash start";
 	args->hash_start_block = num_ll;
 
+	if (argc > DM_VERITY_NUM_POSITIONAL_ARGS) {
+		if (sscanf(argv[10], "%d%c", &num, &dummy) != 1 ||
+			num < DM_VERITY_MODE_EIO ||
+			num > DM_VERITY_MODE_RESTART) {
+			ti->error = "Invalid mode";
+			r = -EINVAL;
+			goto bad;
+		}
+		v->mode = num;
+	}
 
 	args->algorithm = argv[7];
 	args->digest = argv[8];
