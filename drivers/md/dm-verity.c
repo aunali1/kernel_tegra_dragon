@@ -39,6 +39,8 @@
 #define DM_VERITY_OPT_LOGGING		"ignore_corruption"
 #define DM_VERITY_OPT_RESTART		"restart_on_corruption"
 
+#define DM_VERITY_OPTS_MAX		1
+
 static unsigned dm_verity_prefetch_cluster = DM_VERITY_DEFAULT_PREFETCH_SIZE;
 
 module_param_named(prefetch_cluster, dm_verity_prefetch_cluster, uint, S_IRUGO | S_IWUSR);
@@ -859,6 +861,44 @@ static void verity_dtr(struct dm_target *ti)
 	kfree(v);
 }
 
+static int verity_parse_opt_args(struct dm_arg_set *as, struct dm_verity *v)
+{
+	int r;
+	unsigned argc;
+	struct dm_target *ti = v->ti;
+	const char *arg_name;
+
+	static struct dm_arg _args[] = {
+		{0, DM_VERITY_OPTS_MAX, "Invalid number of feature args"},
+	};
+
+	r = dm_read_arg_group(_args, as, &argc, &ti->error);
+	if (r)
+		return -EINVAL;
+
+	if (!argc)
+		return 0;
+
+	do {
+		arg_name = dm_shift_arg(as);
+		argc--;
+
+		if (!strcasecmp(arg_name, DM_VERITY_OPT_LOGGING)) {
+			v->mode = DM_VERITY_MODE_LOGGING;
+			continue;
+
+		} else if (!strcasecmp(arg_name, DM_VERITY_OPT_RESTART)) {
+			v->mode = DM_VERITY_MODE_RESTART;
+			continue;
+		}
+
+		ti->error = "Unrecognized verity feature request";
+		return -EINVAL;
+	} while (argc && !r);
+
+	return r;
+}
+
 static int verity_get_device(struct dm_target *ti, char *devname,
 			     struct dm_dev **dm_dev)
 {
@@ -934,7 +974,7 @@ static char *positional_args(unsigned argc, char **argv,
 	unsigned long long num_ll;
 	char dummy;
 
-	if (argc < DM_VERITY_NUM_POSITIONAL_ARGS)
+	if (argc < (DM_VERITY_NUM_POSITIONAL_ARGS-1))
 		return "Not enough arguments";
 
 	if (sscanf(argv[0], "%u%c", &num, &dummy) != 1 ||
@@ -1058,15 +1098,9 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	struct verity_args args = { 0 };
 	struct dm_verity *v;
 	struct dm_arg_set as;
-	const char *opt_string;
-	unsigned int opt_params;
 	int r;
 	int i;
 	sector_t hash_position;
-
-	static struct dm_arg _args[] = {
-		{0, 1, "Invalid number of feature args"},
-	};
 
 	args.error_behavior = error_behavior;
 	if (argc == DM_VERITY_NUM_POSITIONAL_ARGS)
@@ -1186,29 +1220,9 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 		as.argc = argc;
 		as.argv = argv;
 
-		r = dm_read_arg_group(_args, &as, &opt_params, &ti->error);
-		if (r)
+		r = verity_parse_opt_args(&as, v);
+		if (r < 0)
  			goto bad;
-
-		while (opt_params) {
-			opt_params--;
-			opt_string = dm_shift_arg(&as);
-			if (!opt_string) {
-				ti->error = "Not enough feature arguments";
-				r = -EINVAL;
-				goto bad;
-			}
-
-			if (!strcasecmp(opt_string, DM_VERITY_OPT_LOGGING))
-				v->mode = DM_VERITY_MODE_LOGGING;
-			else if (!strcasecmp(opt_string, DM_VERITY_OPT_RESTART))
-				v->mode = DM_VERITY_MODE_RESTART;
-			else {
-				ti->error = "Invalid feature arguments";
-				r = -EINVAL;
-				goto bad;
-			}
-		}
 	}
 
 	v->hash_per_block_bits =
