@@ -28,24 +28,25 @@
 #define DM_MSG_PREFIX			"verity"
 
 #define DM_VERITY_ENV_LENGTH		42
-#define DM_VERITY_ENV_VAR_NAME		"VERITY_ERR_BLOCK_NR"
+#define DM_VERITY_ENV_VAR_NAME		"DM_VERITY_ERR_BLOCK_NR"
 
-#define DM_VERITY_IO_VEC_INLINE		16
-#define DM_VERITY_MEMPOOL_SIZE		4
 #define DM_VERITY_DEFAULT_PREFETCH_SIZE	262144
 
 #define DM_VERITY_MAX_LEVELS		63
 #define DM_VERITY_MAX_CORRUPTED_ERRS	100
 #define DM_VERITY_NUM_POSITIONAL_ARGS	10
 
+#define DM_VERITY_OPT_LOGGING		"ignore_corruption"
+#define DM_VERITY_OPT_RESTART		"restart_on_corruption"
+
 static unsigned dm_verity_prefetch_cluster = DM_VERITY_DEFAULT_PREFETCH_SIZE;
 
 module_param_named(prefetch_cluster, dm_verity_prefetch_cluster, uint, S_IRUGO | S_IWUSR);
 
 enum verity_mode {
-	DM_VERITY_MODE_EIO = 0,
-	DM_VERITY_MODE_LOGGING = 1,
-	DM_VERITY_MODE_RESTART = 2
+	DM_VERITY_MODE_EIO,
+	DM_VERITY_MODE_LOGGING,
+	DM_VERITY_MODE_RESTART
 };
 
 enum verity_block_type {
@@ -78,8 +79,6 @@ struct dm_verity {
 	enum verity_mode mode;	/* mode for handling verification errors */
 	unsigned corrupted_errs;/* Number of errors for corrupted blocks */
 	int error_behavior;	/* selects error behavior on io erros */
-
-	mempool_t *vec_mempool;	/* mempool of bio vector */
 
 	struct workqueue_struct *verify_wq;
 
@@ -392,17 +391,20 @@ static void verity_hash_at_level(struct dm_verity *v, sector_t block, int level,
  * Handle verification errors.
  */
 static int verity_handle_err(struct dm_verity *v, enum verity_block_type type,
-				 unsigned long long block)
+			     unsigned long long block)
 {
 	char verity_env[DM_VERITY_ENV_LENGTH];
 	char *envp[] = { verity_env, NULL };
 	const char *type_str = "";
 	struct mapped_device *md = dm_table_get_md(v->ti->table);
 
+	/* Corruption should be visible in device status in all modes */
+	v->hash_failed = 1;
+
 	if (v->corrupted_errs >= DM_VERITY_MAX_CORRUPTED_ERRS)
 		goto out;
 
-	++v->corrupted_errs;
+	v->corrupted_errs++;
 
 	switch (type) {
 	case DM_VERITY_BLOCK_TYPE_DATA:
@@ -415,8 +417,8 @@ static int verity_handle_err(struct dm_verity *v, enum verity_block_type type,
 		BUG();
 	}
 
-	DMERR_LIMIT("%s: %s block %llu is corrupted", v->data_dev->name,
-                type_str, block);
+	DMERR("%s: %s block %llu is corrupted", v->data_dev->name, type_str,
+		block);
 
 	if (v->corrupted_errs == DM_VERITY_MAX_CORRUPTED_ERRS)
 		DMERR("%s: reached maximum errors", v->data_dev->name);
@@ -461,7 +463,7 @@ static int verity_verify_level(struct dm_verity *v, struct dm_verity_io *io,
 	verity_hash_at_level(v, block, level, &hash_block, &offset);
 
 	data = dm_bufio_read(v->bufio, hash_block, &buf);
-	if (unlikely(IS_ERR(data)))
+	if (IS_ERR(data))
 		return PTR_ERR(data);
 
 	aux = dm_bufio_get_aux_data(buf);
@@ -764,6 +766,19 @@ static void verity_status(struct dm_target *ti, status_type_t type,
 		else
 			for (x = 0; x < v->salt_size; x++)
 				DMEMIT("%02x", v->salt[x]);
+		if (v->mode != DM_VERITY_MODE_EIO) {
+			DMEMIT(" 1 ");
+			switch (v->mode) {
+			case DM_VERITY_MODE_LOGGING:
+				DMEMIT(DM_VERITY_OPT_LOGGING);
+				break;
+			case DM_VERITY_MODE_RESTART:
+				DMEMIT(DM_VERITY_OPT_RESTART);
+				break;
+			default:
+				BUG();
+			}
+		}
 		break;
 	}
 }
@@ -824,9 +839,6 @@ static void verity_dtr(struct dm_target *ti)
 
 	if (v->verify_wq)
 		destroy_workqueue(v->verify_wq);
-
-	if (v->vec_mempool)
-		mempool_destroy(v->vec_mempool);
 
 	if (v->bufio)
 		dm_bufio_client_destroy(v->bufio);
@@ -923,11 +935,11 @@ static char *positional_args(unsigned argc, char **argv,
 	unsigned long long num_ll;
 	char dummy;
 
-	if (argc < DM_VERITY_NUM_POSITIONAL_ARGS || argc > (DM_VERITY_NUM_POSITIONAL_ARGS + 1))
-		return "Invalid argument count: 10-11 arguments required";
+	if (argc < DM_VERITY_NUM_POSITIONAL_ARGS)
+		return "Not enough arguments";
 
-	if (sscanf(argv[0], "%d%c", &num, &dummy) != 1 ||
-	    num < 0 || num > 1)
+	if (sscanf(argv[0], "%u%c", &num, &dummy) != 1 ||
+	    num > 1)
 		return "Invalid version";
 	args->version = num;
 
@@ -1049,6 +1061,9 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 {
 	struct verity_args args = { 0 };
 	struct dm_verity *v;
+	struct dm_arg_set as;
+	const char *opt_string;
+	unsigned int num, opt_params;
 	int r;
 	int i;
 	sector_t hash_position;
@@ -1063,6 +1078,9 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	if (0)
 		pr_args(&args);
 
+	static struct dm_arg _args[] = {
+		{0, 1, "Invalid number of feature args"},
+	};
 
 	v = kzalloc(sizeof(struct dm_verity), GFP_KERNEL);
 	if (!v) {
@@ -1163,15 +1181,37 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 		}
 	}
 
-	if (argc > DM_VERITY_NUM_POSITIONAL_ARGS) {
-		if (sscanf(argv[10], "%d%c", &num, &dummy) != 1 ||
-			num < DM_VERITY_MODE_EIO ||
-			num > DM_VERITY_MODE_RESTART) {
-			ti->error = "Invalid mode";
-			r = -EINVAL;
+	argv += DM_VERITY_NUM_POSITIONAL_ARGS;
+	argc -= DM_VERITY_NUM_POSITIONAL_ARGS;
+
+	/* Optional parameters */
+	if (argc) {
+		as.argc = argc;
+		as.argv = argv;
+
+		r = dm_read_arg_group(_args, &as, &opt_params, &ti->error);
+		if (r)
 			goto bad;
+
+		while (opt_params) {
+			opt_params--;
+			opt_string = dm_shift_arg(&as);
+			if (!opt_string) {
+				ti->error = "Not enough feature arguments";
+				r = -EINVAL;
+				goto bad;
+			}
+
+			if (!strcasecmp(opt_string, DM_VERITY_OPT_LOGGING))
+				v->mode = DM_VERITY_MODE_LOGGING;
+			else if (!strcasecmp(opt_string, DM_VERITY_OPT_RESTART))
+				v->mode = DM_VERITY_MODE_RESTART;
+			else {
+				ti->error = "Invalid feature arguments";
+				r = -EINVAL;
+				goto bad;
+			}
 		}
-		v->mode = num;
 	}
 
 	v->hash_per_block_bits =
@@ -1222,14 +1262,6 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	}
 
 	ti->per_bio_data_size = roundup(sizeof(struct dm_verity_io) + v->shash_descsize + v->digest_size * 2, __alignof__(struct dm_verity_io));
-
-	v->vec_mempool = mempool_create_kmalloc_pool(DM_VERITY_MEMPOOL_SIZE,
-					BIO_MAX_PAGES * sizeof(struct bio_vec));
-	if (!v->vec_mempool) {
-		ti->error = "Cannot allocate vector mempool";
-		r = -ENOMEM;
-		goto bad;
-	}
 
 	/* WQ_UNBOUND greatly improves performance when running on ramdisk */
 	v->verify_wq = alloc_workqueue("kverityd", WQ_CPU_INTENSIVE | WQ_MEM_RECLAIM | WQ_UNBOUND, num_online_cpus());
