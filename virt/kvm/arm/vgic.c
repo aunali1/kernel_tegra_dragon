@@ -1724,7 +1724,8 @@ static int vgic_vcpu_init_maps(struct kvm_vcpu *vcpu, int nr_irqs)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 
-	int sz = (nr_irqs - VGIC_NR_PRIVATE_IRQS) / 8;
+	int nr_longs = BITS_TO_LONGS(nr_irqs - VGIC_NR_PRIVATE_IRQS);
+	int sz = nr_longs * sizeof(unsigned long);
 	vgic_cpu->pending_shared = kzalloc(sz, GFP_KERNEL);
 	vgic_cpu->vgic_irq_lr_map = kzalloc(nr_irqs, GFP_KERNEL);
 
