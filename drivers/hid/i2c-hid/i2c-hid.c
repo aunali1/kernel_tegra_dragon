@@ -885,6 +885,7 @@ static inline int i2c_hid_acpi_pdata(struct i2c_client *client,
 }
 #endif
 
+#ifdef CONFIG_OF
 /* for probe deferral */
 static bool inited = IS_MODULE(CONFIG_I2C_HID);
 
@@ -898,7 +899,6 @@ static int __init i2c_hid_late_initcall(void)
 late_initcall_sync(i2c_hid_late_initcall);
 #endif
 
-#ifdef CONFIG_OF
 static int i2c_hid_of_probe(struct i2c_client *client,
 		struct i2c_hid_platform_data *pdata)
 {
