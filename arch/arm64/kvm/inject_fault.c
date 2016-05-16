@@ -130,7 +130,7 @@ static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt, unsigned long addr
 		esr |= (ESR_EL1_EC_IABT_EL1 << ESR_EL1_EC_SHIFT);
 
 	if (!is_iabt)
-		esr |= ESR_EL1_EC_DABT_EL0;
+		esr |= ESR_ELx_EC_DABT_LOW << ESR_ELx_EC_SHIFT;
 
 	vcpu_sys_reg(vcpu, ESR_EL1) = esr | ESR_EL2_EC_xABT_xFSR_EXTABT;
 }
