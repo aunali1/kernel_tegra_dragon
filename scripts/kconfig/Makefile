@@ -121,6 +121,10 @@ PHONY += tinyconfig
 tinyconfig: allnoconfig
 	$(call mergeconfig,tiny)
 
+PHONY += kasanconfig
+kasanconfig:
+	$(call mergeconfig,kasan)
+
 PHONY += kcovconfig
 kcovconfig:
 	$(call mergeconfig,kcov)
