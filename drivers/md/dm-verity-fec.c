@@ -388,9 +388,10 @@ int verity_fec_decode(struct dm_verity *v, struct dm_verity_io *io,
 	 * and each code is interleaved over N blocks to make it less likely
 	 * that bursty corruption will leave us in unrecoverable state.
 	 */
+
 	offset = block << v->data_dev_block_bits;
-	res = offset;
-	div64_u64(res, v->fec->rounds << v->data_dev_block_bits);
+	res = div64_u64(offset, v->fec->rounds << v->data_dev_block_bits);
+
 	/*
 	 * The base RS block we can feed to the interleaver to find out all
 	 * blocks required for decoding.
