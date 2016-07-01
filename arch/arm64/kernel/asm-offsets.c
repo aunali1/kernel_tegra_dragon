@@ -40,6 +40,9 @@ int main(void)
   DEFINE(TI_TASK,		offsetof(struct thread_info, task));
   DEFINE(TI_EXEC_DOMAIN,	offsetof(struct thread_info, exec_domain));
   DEFINE(TI_CPU,		offsetof(struct thread_info, cpu));
+#ifdef CONFIG_ARM64_SW_TTBR0_PAN
+  DEFINE(TSK_TI_TTBR0,		offsetof(struct thread_info, ttbr0));
+#endif
 #ifdef CONFIG_ALT_SYSCALL
   DEFINE(TI_NR_SYSCALLS,	offsetof(struct thread_info, nr_syscalls));
   DEFINE(TI_SYS_CALL_TABLE,	offsetof(struct thread_info, sys_call_table));
