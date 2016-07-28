@@ -82,7 +82,6 @@ nv04_fbcon_imageblit(struct fb_info *info, const struct fb_image *image)
 	uint32_t fg;
 	uint32_t bg;
 	uint32_t dsize;
-	uint32_t width;
 	uint32_t *data = (uint32_t *)image->data;
 	int ret;
 
@@ -93,8 +92,7 @@ nv04_fbcon_imageblit(struct fb_info *info, const struct fb_image *image)
 	if (ret)
 		return ret;
 
-	width = ALIGN(image->width, 8);
-	dsize = ALIGN(width * image->height, 32) >> 5;
+	dsize = ALIGN(ALIGN(image->width, 8) * image->height, 32) >> 5;
 
 	if (info->fix.visual == FB_VISUAL_TRUECOLOR ||
 	    info->fix.visual == FB_VISUAL_DIRECTCOLOR) {
@@ -111,7 +109,7 @@ nv04_fbcon_imageblit(struct fb_info *info, const struct fb_image *image)
 			 ((image->dx + image->width) & 0xffff));
 	OUT_RING(chan, bg);
 	OUT_RING(chan, fg);
-	OUT_RING(chan, (image->height << 16) | width);
+	OUT_RING(chan, (image->height << 16) | ALIGN(image->width, 8));
 	OUT_RING(chan, (image->height << 16) | image->width);
 	OUT_RING(chan, (image->dy << 16) | (image->dx & 0xffff));
 

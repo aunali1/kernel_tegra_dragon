@@ -95,7 +95,7 @@ nvc0_fbcon_imageblit(struct fb_info *info, const struct fb_image *image)
 	struct nouveau_fbdev *nfbdev = info->par;
 	struct nouveau_drm *drm = nouveau_drm(nfbdev->dev);
 	struct nouveau_channel *chan = drm->channel;
-	uint32_t width, dwords, *data = (uint32_t *)image->data;
+	uint32_t dwords, *data = (uint32_t *)image->data;
 	uint32_t mask = ~(~0 >> (32 - info->var.bits_per_pixel));
 	uint32_t *palette = info->pseudo_palette;
 	int ret;
@@ -107,8 +107,7 @@ nvc0_fbcon_imageblit(struct fb_info *info, const struct fb_image *image)
 	if (ret)
 		return ret;
 
-	width = ALIGN(image->width, 32);
-	dwords = (width * image->height) >> 5;
+	dwords = ALIGN(ALIGN(image->width, 8) * image->height, 32) >> 5;
 
 	BEGIN_NVC0(chan, NvSub2D, 0x0814, 2);
 	if (info->fix.visual == FB_VISUAL_TRUECOLOR ||
