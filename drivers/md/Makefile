@@ -56,6 +56,7 @@ obj-$(CONFIG_DM_CACHE)		+= dm-cache.o
 obj-$(CONFIG_DM_CACHE_MQ)	+= dm-cache-mq.o
 obj-$(CONFIG_DM_CACHE_CLEANER)	+= dm-cache-cleaner.o
 obj-$(CONFIG_DM_ERA)		+= dm-era.o
+obj-$(CONFIG_DM_ANDROID_VERITY) += dm-android-verity.o
 obj-$(CONFIG_DM_VERITY_CHROMEOS)		+= dm-verity-chromeos.o
 obj-$(CONFIG_DM_BOOTCACHE)	+= dm-bootcache.o
 
@@ -65,8 +66,4 @@ endif
 
 ifeq ($(CONFIG_DM_VERITY_FEC),y)
 dm-verity-objs			+= dm-verity-fec.o
-endif
-
-ifeq ($(CONFIG_DM_ANDROID_VERITY),y)
-dm-verity-objs			+= dm-android-verity.o
 endif
