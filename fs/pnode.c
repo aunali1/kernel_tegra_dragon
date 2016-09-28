@@ -235,7 +235,7 @@ static int propagate_one(struct mount *m)
 		if (IS_MNT_SHARED(m))
 			type |= CL_MAKE_SHARED;
 	}
-		
+
 	/* Notice when we are propagating across user namespaces */
 	if (m->mnt_ns->user_ns != user_ns)
 		type |= CL_UNPRIVILEGED;
@@ -251,7 +251,7 @@ static int propagate_one(struct mount *m)
 		read_sequnlock_excl(&mount_lock);
 	}
 	hlist_add_head(&child->mnt_hash, list);
-	return 0;
+	return count_mounts(m->mnt_ns, child);
 }
 
 /*
