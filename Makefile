@@ -414,6 +414,7 @@ KBUILD_CFLAGS   := -mcpu=cortex-a57.cortex-a53 -Wall -Wundef -Wstrict-prototypes
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
+		   -Wno-maybe-uninitialized \
 		   -std=gnu89
 
 KBUILD_AFLAGS_KERNEL :=
