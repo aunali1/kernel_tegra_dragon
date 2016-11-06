@@ -1735,7 +1735,7 @@ unsigned long msleep_interruptible(unsigned int msecs)
 
 EXPORT_SYMBOL(msleep_interruptible);
 
-static int __sched do_usleep_range(unsigned long min, unsigned long max)
+static void __sched do_usleep_range(unsigned long min, unsigned long max)
 {
 	ktime_t now, end;
 	ktime_t kmin;
@@ -1759,8 +1759,6 @@ static int __sched do_usleep_range(unsigned long min, unsigned long max)
 
 		now = ktime_get();
 	} while (ktime_before(now, end));
-
-	return ret;
 }
 
 /**
