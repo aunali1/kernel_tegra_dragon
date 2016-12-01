@@ -257,7 +257,6 @@ enum tegra_suspend_mode tegra_pm_validate_suspend_mode(
 
 static int tegra_sleep_core(unsigned long v2p)
 {
-	setup_mm_for_reboot();
 	tegra_sleep_core_finish(v2p);
 
 	/* should never here */
