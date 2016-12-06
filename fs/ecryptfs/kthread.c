@@ -25,7 +25,6 @@
 #include <linux/slab.h>
 #include <linux/wait.h>
 #include <linux/mount.h>
-#include <linux/file.h>
 #include <linux/selinux.h>
 #include "ecryptfs_kernel.h"
 
@@ -180,11 +179,8 @@ int ecryptfs_privileged_open(struct file **lower_file,
 	mutex_unlock(&ecryptfs_kthread_ctl.mux);
 	wake_up(&ecryptfs_kthread_ctl.wait);
 	wait_for_completion(&req.done);
-	if (IS_ERR(*lower_file)) {
+	if (IS_ERR(*lower_file))
 		rc = PTR_ERR(*lower_file);
-		goto out;
-	}
-
 out:
 	return rc;
 }
