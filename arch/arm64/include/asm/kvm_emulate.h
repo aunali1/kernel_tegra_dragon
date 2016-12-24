@@ -27,6 +27,7 @@
 #include <asm/kvm_arm.h>
 #include <asm/kvm_mmio.h>
 #include <asm/ptrace.h>
+#include <asm/esr.h>
 
 unsigned long *vcpu_reg32(const struct kvm_vcpu *vcpu, u8 reg_num);
 unsigned long *vcpu_spsr32(const struct kvm_vcpu *vcpu);
