@@ -11,6 +11,7 @@ enum perf_call_graph_mode {
 	CALLCHAIN_NONE,
 	CALLCHAIN_FP,
 	CALLCHAIN_DWARF,
+	CALLCHAIN_LBR,
 	CALLCHAIN_MAX
 };
 
@@ -63,6 +64,7 @@ struct callchain_param {
 	sort_chain_func_t	sort;
 	enum chain_order	order;
 	enum chain_key		key;
+	bool			branch_callstack;
 };
 
 extern struct callchain_param callchain_param;
@@ -184,11 +186,9 @@ static inline void callchain_cursor_snapshot(struct callchain_cursor *dest,
 }
 
 #ifdef HAVE_SKIP_CALLCHAIN_IDX
-extern int arch_skip_callchain_idx(struct machine *machine,
-			struct thread *thread, struct ip_callchain *chain);
+extern int arch_skip_callchain_idx(struct thread *thread, struct ip_callchain *chain);
 #else
-static inline int arch_skip_callchain_idx(struct machine *machine __maybe_unused,
-			struct thread *thread __maybe_unused,
+static inline int arch_skip_callchain_idx(struct thread *thread __maybe_unused,
 			struct ip_callchain *chain __maybe_unused)
 {
 	return -1;

@@ -27,6 +27,7 @@
 #include <asm/kvm_arm.h>
 #include <asm/kvm_mmio.h>
 #include <asm/ptrace.h>
+#include <asm/esr.h>
 
 unsigned long *vcpu_reg32(const struct kvm_vcpu *vcpu, u8 reg_num);
 unsigned long *vcpu_spsr32(const struct kvm_vcpu *vcpu);
@@ -96,11 +97,13 @@ static inline void vcpu_set_thumb(struct kvm_vcpu *vcpu)
 	*vcpu_cpsr(vcpu) |= COMPAT_PSR_T_BIT;
 }
 
+/*
+ * vcpu_reg should always be passed a register number coming from a
+ * read of ESR_EL2. Otherwise, it may give the wrong result on AArch32
+ * with banked registers.
+ */
 static inline unsigned long *vcpu_reg(const struct kvm_vcpu *vcpu, u8 reg_num)
 {
-	if (vcpu_mode_is_32bit(vcpu))
-		return vcpu_reg32(vcpu, reg_num);
-
 	return (unsigned long *)&vcpu_gp_regs(vcpu)->regs.regs[reg_num];
 }
 
@@ -143,11 +146,6 @@ static inline bool kvm_vcpu_dabt_isvalid(const struct kvm_vcpu *vcpu)
 	return !!(kvm_vcpu_get_hsr(vcpu) & ESR_EL2_ISV);
 }
 
-static inline bool kvm_vcpu_dabt_iswrite(const struct kvm_vcpu *vcpu)
-{
-	return !!(kvm_vcpu_get_hsr(vcpu) & ESR_EL2_WNR);
-}
-
 static inline bool kvm_vcpu_dabt_issext(const struct kvm_vcpu *vcpu)
 {
 	return !!(kvm_vcpu_get_hsr(vcpu) & ESR_EL2_SSE);
@@ -166,6 +164,17 @@ static inline bool kvm_vcpu_dabt_isextabt(const struct kvm_vcpu *vcpu)
 static inline bool kvm_vcpu_dabt_iss1tw(const struct kvm_vcpu *vcpu)
 {
 	return !!(kvm_vcpu_get_hsr(vcpu) & ESR_EL2_S1PTW);
+}
+
+static inline bool kvm_vcpu_dabt_iswrite(const struct kvm_vcpu *vcpu)
+{
+	return !!(kvm_vcpu_get_hsr(vcpu) & ESR_ELx_WNR) ||
+		kvm_vcpu_dabt_iss1tw(vcpu); /* AF/DBM update */
+}
+
+static inline bool kvm_vcpu_dabt_is_cm(const struct kvm_vcpu *vcpu)
+{
+	return !!(kvm_vcpu_get_hsr(vcpu) & ESR_ELx_CM);
 }
 
 static inline int kvm_vcpu_dabt_get_as(const struct kvm_vcpu *vcpu)

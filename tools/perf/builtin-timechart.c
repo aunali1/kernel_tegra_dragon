@@ -528,7 +528,7 @@ static const char *cat_backtrace(union perf_event *event,
 		}
 
 		tal.filtered = 0;
-		thread__find_addr_location(al.thread, machine, cpumode,
+		thread__find_addr_location(al.thread, cpumode,
 					   MAP__FUNCTION, ip, &tal);
 
 		if (tal.sym)
@@ -1623,7 +1623,7 @@ static int __cmd_timechart(struct timechart *tchart, const char *output_name)
 		goto out_delete;
 	}
 
-	ret = perf_session__process_events(session, &tchart->tool);
+	ret = perf_session__process_events(session);
 	if (ret)
 		goto out_delete;
 

@@ -28,7 +28,6 @@
 #include <linux/spinlock.h>
 
 #include <asm/cacheflush.h>
-#include <asm/cpufeature.h>
 #include <asm/efi.h>
 #include <asm/tlbflush.h>
 #include <asm/mmu_context.h>
@@ -122,12 +121,12 @@ static int __init uefi_init(void)
 
 	/* Show what we know for posterity */
 	c16 = early_memremap(efi_to_phys(efi.systab->fw_vendor),
-			     sizeof(vendor));
+			     sizeof(vendor) * sizeof(efi_char16_t));
 	if (c16) {
 		for (i = 0; i < (int) sizeof(vendor) - 1 && *c16; ++i)
 			vendor[i] = c16[i];
 		vendor[i] = '\0';
-		early_memunmap(c16, sizeof(vendor));
+		early_memunmap(c16, sizeof(vendor) * sizeof(efi_char16_t));
 	}
 
 	pr_info("EFI v%u.%.02u by %s\n",
@@ -259,7 +258,8 @@ static bool __init efi_virtmap_init(void)
 		 */
 		if (!is_normal_ram(md))
 			prot = __pgprot(PROT_DEVICE_nGnRE);
-		else if (md->type == EFI_RUNTIME_SERVICES_CODE)
+		else if (md->type == EFI_RUNTIME_SERVICES_CODE ||
+			 !PAGE_ALIGNED(md->phys_addr))
 			prot = PAGE_KERNEL_EXEC;
 		else
 			prot = PAGE_KERNEL;

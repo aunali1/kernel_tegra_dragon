@@ -190,19 +190,42 @@ out:
 	return rc;
 }
 
+static int process_sample_event(struct perf_tool *tool,
+				union perf_event *event,
+				struct perf_sample *sample,
+				struct perf_evsel *evsel,
+				struct machine *machine)
+{
+	struct record *rec = container_of(tool, struct record, tool);
+
+	rec->samples++;
+
+	return build_id__mark_dso_hit(tool, event, sample, evsel, machine);
+}
+
 static int process_buildids(struct record *rec)
 {
 	struct perf_data_file *file  = &rec->file;
 	struct perf_session *session = rec->session;
-	u64 start = session->header.data_offset;
 
 	u64 size = lseek(file->fd, 0, SEEK_CUR);
 	if (size == 0)
 		return 0;
 
-	return __perf_session__process_events(session, start,
-					      size - start,
-					      size, &build_id__mark_dso_hit_ops);
+	file->size = size;
+
+	/*
+	 * During this process, it'll load kernel map and replace the
+	 * dso->long_name to a real pathname it found.  In this case
+	 * we prefer the vmlinux path like
+	 *   /lib/modules/3.16.4/build/vmlinux
+	 *
+	 * rather than build-id path (in debug directory).
+	 *   $HOME/.debug/.build-id/f0/6e17aa50adf4d00b88925e03775de107611551
+	 */
+	symbol_conf.ignore_vmlinux_buildid = true;
+
+	return perf_session__process_events(session);
 }
 
 static void perf_event__synthesize_guest_os(struct machine *machine, void *data)
@@ -319,7 +342,7 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 	signal(SIGINT, sig_handler);
 	signal(SIGTERM, sig_handler);
 
-	session = perf_session__new(file, false, NULL);
+	session = perf_session__new(file, false, tool);
 	if (session == NULL) {
 		pr_err("Perf session creation failed.\n");
 		return -1;
@@ -493,18 +516,8 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 		goto out_child;
 	}
 
-	if (!quiet) {
+	if (!quiet)
 		fprintf(stderr, "[ perf record: Woken up %ld times to write data ]\n", waking);
-
-		/*
-		 * Approximate RIP event size: 24 bytes.
-		 */
-		fprintf(stderr,
-			"[ perf record: Captured and wrote %.3f MB %s (~%" PRIu64 " samples) ]\n",
-			(double)rec->bytes_written / 1024.0 / 1024.0,
-			file->path,
-			rec->bytes_written / 24);
-	}
 
 out_child:
 	if (forks) {
@@ -524,6 +537,9 @@ out_child:
 	} else
 		status = err;
 
+	/* this will be recalculated during process_buildids() */
+	rec->samples = 0;
+
 	if (!err && !file->is_pipe) {
 		rec->session->header.data_size += rec->bytes_written;
 
@@ -531,6 +547,20 @@ out_child:
 			process_buildids(rec);
 		perf_session__write_header(rec->session, rec->evlist,
 					   file->fd, true);
+	}
+
+	if (!err && !quiet) {
+		char samples[128];
+
+		if (rec->samples)
+			scnprintf(samples, sizeof(samples),
+				  " (%" PRIu64 " samples)", rec->samples);
+		else
+			samples[0] = '\0';
+
+		fprintf(stderr,	"[ perf record: Captured and wrote %.3f MB %s%s ]\n",
+			perf_data_file__size(file) / 1024.0 / 1024.0,
+			file->path, samples);
 	}
 
 out_delete_session:
@@ -628,7 +658,7 @@ error:
 
 static void callchain_debug(void)
 {
-	static const char *str[CALLCHAIN_MAX] = { "NONE", "FP", "DWARF" };
+	static const char *str[CALLCHAIN_MAX] = { "NONE", "FP", "DWARF", "LBR" };
 
 	pr_debug("callchain: type %s\n", str[callchain_param.record_mode]);
 
@@ -708,14 +738,21 @@ static struct record record = {
 			.default_per_cpu = true,
 		},
 	},
+	.tool = {
+		.sample		= process_sample_event,
+		.fork		= perf_event__process_fork,
+		.comm		= perf_event__process_comm,
+		.mmap		= perf_event__process_mmap,
+		.mmap2		= perf_event__process_mmap2,
+	},
 };
 
 #define CALLCHAIN_HELP "setup and enables call-graph (stack chain/backtrace) recording: "
 
 #ifdef HAVE_DWARF_UNWIND_SUPPORT
-const char record_callchain_help[] = CALLCHAIN_HELP "fp dwarf";
+const char record_callchain_help[] = CALLCHAIN_HELP "fp dwarf lbr";
 #else
-const char record_callchain_help[] = CALLCHAIN_HELP "fp";
+const char record_callchain_help[] = CALLCHAIN_HELP "fp lbr";
 #endif
 
 /*
@@ -799,6 +836,8 @@ const struct option record_options[] = {
 		    "sample transaction flags (special events only)"),
 	OPT_BOOLEAN(0, "per-thread", &record.opts.target.per_thread,
 		    "use per-thread mmaps"),
+	OPT_BOOLEAN('I', "intr-regs", &record.opts.sample_intr_regs,
+		    "Sample machine registers on interrupt"),
 	OPT_END()
 };
 

@@ -77,6 +77,7 @@ struct cros_ec_dev {
 	struct cdev cdev;
 	struct cros_ec_device *ec_dev;
 	struct device *dev;
+	bool has_kb_wake_angle;
 	struct cros_ec_debugfs *debug_info;
 	u16 cmd_offset;
 	u32 features[2];
@@ -203,8 +204,6 @@ struct cros_ec_sensor_platform {
 	u8 sensor_num;
 };
 
-
-
 /**
  * cros_ec_suspend - Handle a suspend operation for the ChromeOS EC device
  *
@@ -302,10 +301,19 @@ int cros_ec_remove(struct cros_ec_device *ec_dev);
 int cros_ec_register(struct cros_ec_device *ec_dev);
 
 /**
- * cros_ec_get_host_event - Return a mask of event set by the EC.
+ * cros_ec_get_next_event - Retrieve the EC event.
  *
  * When MKBP is supported, when the EC raises an interrupt,
- * We collect the events raised and call the functions in the ec notifier.
+ * this function collects the first event to be processed by the host.
+ */
+int cros_ec_get_next_event(struct cros_ec_device *ec_dev);
+
+/**
+ * cros_ec_get_host_event - Return a mask of event set by the EC.
+ *
+ * Once cros_ec_get_next_event() has been called, if the event source is
+ * a host event, this function returns the precise event that triggered
+ * the interrupt.
  *
  * This function is a helper to know which events are raised.
  */

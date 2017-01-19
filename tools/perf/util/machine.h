@@ -77,6 +77,8 @@ int machine__process_fork_event(struct machine *machine, union perf_event *event
 				struct perf_sample *sample);
 int machine__process_lost_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
+int machine__process_lost_samples_event(struct machine *machine, union perf_event *event,
+					struct perf_sample *sample);
 int machine__process_mmap_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
 int machine__process_mmap2_event(struct machine *machine, union perf_event *event,
@@ -122,13 +124,12 @@ struct branch_info *sample__resolve_bstack(struct perf_sample *sample,
 					   struct addr_location *al);
 struct mem_info *sample__resolve_mem(struct perf_sample *sample,
 				     struct addr_location *al);
-int machine__resolve_callchain(struct machine *machine,
-			       struct perf_evsel *evsel,
-			       struct thread *thread,
-			       struct perf_sample *sample,
-			       struct symbol **parent,
-			       struct addr_location *root_al,
-			       int max_stack);
+int thread__resolve_callchain(struct thread *thread,
+			      struct perf_evsel *evsel,
+			      struct perf_sample *sample,
+			      struct symbol **parent,
+			      struct addr_location *root_al,
+			      int max_stack);
 
 /*
  * Default guest kernel is defined by parameter --guestkallsyms

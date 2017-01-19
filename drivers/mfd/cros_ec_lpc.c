@@ -21,6 +21,7 @@
  * expensive.
  */
 
+#include <linux/acpi.h>
 #include <linux/delay.h>
 #include <linux/dmi.h>
 #include <linux/mfd/cros_ec.h>
@@ -30,7 +31,11 @@
 #include <linux/platform_device.h>
 #include <linux/printk.h>
 
-#define MYNAME "cros_ec_lpc"
+#define MYNAME "cros_ec_lpcs"
+#define ACPI_MYNAME "GOOG0004"
+
+/* True if ACPI device is present */
+static bool cros_ec_lpc_acpi_device_found;
 
 static int ec_response_timed_out(void)
 {
@@ -101,6 +106,10 @@ static int cros_ec_pkt_xfer_lpc(struct cros_ec_device *ec,
 			"packet too long (%d bytes, expected %d)",
 			response.data_len, msg->insize);
 		ret = -EMSGSIZE;
+		goto done;
+	}
+	else if (response.result != 0) {
+		ret = -EINVAL;
 		goto done;
 	}
 
@@ -267,40 +276,51 @@ static int cros_ec_lpc_read_u8(struct cros_ec_device *ec,
 	return cros_ec_lpc_readmem(ec, offset, 1, dest);
 }
 
+static void cros_ec_lpc_acpi_notify(acpi_handle device, u32 value, void *data)
+{
+	struct cros_ec_device *ec_dev = data;
+
+	if (ec_dev->mkbp_event_supported &&
+	    cros_ec_get_next_event(ec_dev) > 0)
+		blocking_notifier_call_chain(&ec_dev->event_notifier,
+					     0, ec_dev);
+}
+
 static int cros_ec_lpc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct acpi_device *adev = ACPI_COMPANION(dev);
+	acpi_status status;
 	struct cros_ec_device *ec_dev;
-	int err = -ENOTTY;
+	int err;
 	u8 buf[2];
 
-	if (!request_region(EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE, MYNAME)) {
-		dev_warn(dev, "couldn't reserve memmap region\n");
-		goto failed_memmap;
+	if (!devm_request_region(dev, EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE,
+				 dev_name(dev))) {
+		dev_err(dev, "couldn't reserve memmap region\n");
+		return -EBUSY;
 	}
 
 	cros_ec_lpc_read_bytes(EC_LPC_ADDR_MEMMAP + EC_MEMMAP_ID, 2, buf);
 	if (buf[0] != 'E' || buf[1] != 'C') {
-		dev_warn(dev, "EC ID not detected\n");
-		goto failed_ec_probe;
+		dev_err(dev, "EC ID not detected\n");
+		return -ENODEV;
 	}
 
-	if (!request_region(EC_HOST_CMD_REGION0, EC_HOST_CMD_REGION_SIZE,
-			    MYNAME)) {
-		dev_warn(dev, "couldn't reserve region0\n");
-		goto failed_region0;
+	if (!devm_request_region(dev, EC_HOST_CMD_REGION0,
+				 EC_HOST_CMD_REGION_SIZE, dev_name(dev))) {
+		dev_err(dev, "couldn't reserve region0\n");
+		return -EBUSY;
 	}
-	if (!request_region(EC_HOST_CMD_REGION1, EC_HOST_CMD_REGION_SIZE,
-			    MYNAME)) {
-		dev_warn(dev, "couldn't reserve region1\n");
-		goto failed_region1;
+	if (!devm_request_region(dev, EC_HOST_CMD_REGION1,
+				 EC_HOST_CMD_REGION_SIZE, dev_name(dev))) {
+		dev_err(dev, "couldn't reserve region1\n");
+		return -EBUSY;
 	}
 
 	ec_dev = devm_kzalloc(dev, sizeof(*ec_dev), GFP_KERNEL);
-	if (!ec_dev) {
-		err = -ENOMEM;
-		goto failed_ec_dev;
-	}
+	if (!ec_dev)
+		return -ENOMEM;
 
 	platform_set_drvdata(pdev, ec_dev);
 	ec_dev->dev = dev;
@@ -318,35 +338,42 @@ static int cros_ec_lpc_probe(struct platform_device *pdev)
 	err = cros_ec_register(ec_dev);
 	if (err) {
 		dev_warn(dev, "couldn't register ec_dev\n");
-		goto failed_ec_dev;
+		return err;
 	}
 
+	/*
+	 * If we have a companion ACPI device connect a notify handler to
+	 * process MKBP messages.
+	 */
+	if (adev) {
+		status = acpi_install_notify_handler(adev->handle,
+				ACPI_ALL_NOTIFY,
+				cros_ec_lpc_acpi_notify, ec_dev);
+		if (ACPI_FAILURE(status))
+			dev_warn(dev, "Failed to register notifier %08x\n",
+				 status);
+	}
 	return 0;
-
-failed_ec_dev:
-	release_region(EC_HOST_CMD_REGION1, EC_HOST_CMD_REGION_SIZE);
-failed_region1:
-	release_region(EC_HOST_CMD_REGION0, EC_HOST_CMD_REGION_SIZE);
-failed_region0:
-failed_ec_probe:
-	release_region(EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE);
-failed_memmap:
-	return err;
 }
 
 static int cros_ec_lpc_remove(struct platform_device *pdev)
 {
-	struct cros_ec_device *ec_dev;
+	struct cros_ec_device *ec_dev = platform_get_drvdata(pdev);
+	struct device *dev = &pdev->dev;
+	struct acpi_device *adev = ACPI_COMPANION(dev);
 
-	ec_dev = platform_get_drvdata(pdev);
+	if (adev)
+		acpi_remove_notify_handler(adev->handle, ACPI_SYSTEM_NOTIFY,
+					   cros_ec_lpc_acpi_notify);
 	cros_ec_remove(ec_dev);
-
-	release_region(EC_HOST_CMD_REGION1, EC_HOST_CMD_REGION_SIZE);
-	release_region(EC_HOST_CMD_REGION0, EC_HOST_CMD_REGION_SIZE);
-	release_region(EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE);
-
 	return 0;
 }
+
+static const struct acpi_device_id cros_ec_lpc_acpi_device_ids[] = {
+	{ ACPI_MYNAME, 0 },
+	{ }
+};
+MODULE_DEVICE_TABLE(acpi, cros_ec_lpc_acpi_device_ids);
 
 static struct dmi_system_id cros_ec_lpc_dmi_table[] __initdata = {
 	{
@@ -385,10 +412,32 @@ static struct dmi_system_id cros_ec_lpc_dmi_table[] __initdata = {
 };
 MODULE_DEVICE_TABLE(dmi, cros_ec_lpc_dmi_table);
 
+#ifdef CONFIG_PM_SLEEP
+static int cros_ec_lpc_suspend(struct device *dev)
+{
+	struct cros_ec_device *ec_dev = dev_get_drvdata(dev);
+
+	return cros_ec_suspend(ec_dev);
+}
+
+static int cros_ec_lpc_resume(struct device *dev)
+{
+	struct cros_ec_device *ec_dev = dev_get_drvdata(dev);
+
+	return cros_ec_resume(ec_dev);
+}
+#endif
+
+const struct dev_pm_ops cros_ec_lpc_pm_ops = {
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(cros_ec_lpc_suspend, cros_ec_lpc_resume)
+};
+
 static struct platform_driver cros_ec_lpc_driver = {
 	.driver = {
 		.name = MYNAME,
 		.owner = THIS_MODULE,
+		.acpi_match_table = cros_ec_lpc_acpi_device_ids,
+		.pm	= &cros_ec_lpc_pm_ops,
 	},
 	.probe = cros_ec_lpc_probe,
 	.remove = cros_ec_lpc_remove,
@@ -406,36 +455,51 @@ static struct platform_device cros_ec_lpc_device = {
 	},
 };
 
+static acpi_status cros_ec_lpc_parse_device(acpi_handle handle, u32 level,
+					    void *context, void **retval)
+{
+	*(bool *)context = true;
+	return AE_CTRL_TERMINATE;
+}
+
 static int __init cros_ec_lpc_init(void)
 {
 	int ret;
+	acpi_status status;
 
 	if (!dmi_check_system(cros_ec_lpc_dmi_table))
 		return -ENODEV;
 
 	cros_ec_lpc_reg_init();
-
 	/* Register the driver */
 	ret = platform_driver_register(&cros_ec_lpc_driver);
 	if (ret < 0) {
 		pr_warn(MYNAME ": can't register driver: %d\n", ret);
+		cros_ec_lpc_reg_destroy();
 		return ret;
 	}
 
-	/* Register the device, and it'll get hooked up automatically */
-	ret = platform_device_register(&cros_ec_lpc_device);
-	if (ret < 0) {
-		pr_warn(MYNAME ": can't register device: %d\n", ret);
-		platform_driver_unregister(&cros_ec_lpc_driver);
-		return ret;
-	}
+	status = acpi_get_devices(ACPI_MYNAME, cros_ec_lpc_parse_device,
+				  &cros_ec_lpc_acpi_device_found, NULL);
+	if (ACPI_FAILURE(status))
+		pr_warn(MYNAME ": Looking for %s failed\n", ACPI_MYNAME);
 
-	return 0;
+	if (!cros_ec_lpc_acpi_device_found) {
+		/* Register the device, and it'll get hooked up automatically */
+		ret = platform_device_register(&cros_ec_lpc_device);
+		if (ret < 0) {
+			pr_err(MYNAME ": can't register device: %d\n", ret);
+			platform_driver_unregister(&cros_ec_lpc_driver);
+			cros_ec_lpc_reg_destroy();
+		}
+	}
+	return ret;
 }
 
 static void __exit cros_ec_lpc_exit(void)
 {
-	platform_device_unregister(&cros_ec_lpc_device);
+	if (!cros_ec_lpc_acpi_device_found)
+		platform_device_unregister(&cros_ec_lpc_device);
 	platform_driver_unregister(&cros_ec_lpc_driver);
 	cros_ec_lpc_reg_destroy();
 }

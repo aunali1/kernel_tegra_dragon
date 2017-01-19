@@ -52,6 +52,11 @@ struct lost_event {
 	u64 lost;
 };
 
+struct lost_samples_event {
+	struct perf_event_header header;
+	u64 lost;
+};
+
 /*
  * PERF_FORMAT_ENABLED | PERF_FORMAT_RUNNING | PERF_FORMAT_ID
  */
@@ -162,6 +167,7 @@ struct perf_sample {
 	struct ip_callchain *callchain;
 	struct branch_stack *branch_stack;
 	struct regs_dump  user_regs;
+	struct regs_dump  intr_regs;
 	struct stack_dump user_stack;
 	struct sample_read read;
 };
@@ -197,6 +203,12 @@ enum perf_user_event_type { /* above any possible kernel type */
  * total_lost tells exactly how many events the kernel in fact lost, i.e. it is
  * the sum of all struct lost_event.lost fields reported.
  *
+ * The kernel discards mixed up samples and sends the number in a
+ * PERF_RECORD_LOST_SAMPLES event. The number of lost-samples events is stored
+ * in .nr_events[PERF_RECORD_LOST_SAMPLES] while total_lost_samples tells
+ * exactly how many samples the kernel in fact dropped, i.e. it is the sum of
+ * all struct lost_samples_event.lost fields reported.
+ *
  * The total_period is needed because by default auto-freq is used, so
  * multipling nr_events[PERF_EVENT_SAMPLE] by a frequency isn't possible to get
  * the total number of low level events, it is necessary to to sum all struct
@@ -206,6 +218,7 @@ struct events_stats {
 	u64 total_period;
 	u64 total_non_filtered_period;
 	u64 total_lost;
+	u64 total_lost_samples;
 	u64 total_invalid_chains;
 	u32 nr_events[PERF_RECORD_HEADER_MAX];
 	u32 nr_non_filtered_samples;
@@ -246,6 +259,7 @@ union perf_event {
 	struct comm_event		comm;
 	struct fork_event		fork;
 	struct lost_event		lost;
+	struct lost_samples_event	lost_samples;
 	struct read_event		read;
 	struct throttle_event		throttle;
 	struct sample_event		sample;
@@ -288,6 +302,10 @@ int perf_event__process_lost(struct perf_tool *tool,
 			     union perf_event *event,
 			     struct perf_sample *sample,
 			     struct machine *machine);
+int perf_event__process_lost_samples(struct perf_tool *tool,
+				     union perf_event *event,
+				     struct perf_sample *sample,
+				     struct machine *machine);
 int perf_event__process_mmap(struct perf_tool *tool,
 			     union perf_event *event,
 			     struct perf_sample *sample,
@@ -322,7 +340,6 @@ bool is_bts_event(struct perf_event_attr *attr);
 bool sample_addr_correlates_sym(struct perf_event_attr *attr);
 void perf_event__preprocess_sample_addr(union perf_event *event,
 					struct perf_sample *sample,
-					struct machine *machine,
 					struct thread *thread,
 					struct addr_location *al);
 

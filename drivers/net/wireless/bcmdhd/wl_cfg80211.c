@@ -1165,10 +1165,12 @@ wl_validate_wps_ie(char *wps_ie, s32 wps_ie_len, bool *pbc)
 		} else if (subelt_id == WPS_ID_DEVICE_NAME) {
 			char devname[100];
 			size_t namelen = MIN(subelt_len, sizeof(devname));
-			memcpy(devname, subel, namelen);
-			devname[namelen-1] = '\0';
-			WL_DBG(("  attr WPS_ID_DEVICE_NAME: %s (len %u)\n",
-				devname, subelt_len));
+			if (namelen) {
+				memcpy(devname, subel, namelen);
+				devname[namelen - 1] = '\0';
+				WL_DBG(("  attr WPS_ID_DEVICE_NAME: %s (len %u)\n",
+					devname, subelt_len));
+			}
 		} else if (subelt_id == WPS_ID_DEVICE_PWD_ID) {
 			valptr[0] = *subel;
 			valptr[1] = *(subel + 1);
@@ -5838,8 +5840,8 @@ wl_cfg80211_mgmt_tx(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 			s32 ie_len = len - ie_offset;
 			if ((dev == bcmcfg_to_prmry_ndev(cfg)) && cfg->p2p)
 				bssidx = wl_to_p2p_bss_bssidx(cfg, P2PAPI_BSSCFG_DEVICE);
-				wl_cfgp2p_set_management_ie(cfg, dev, bssidx,
-				VNDR_IE_PRBRSP_FLAG, (u8 *)(buf + ie_offset), ie_len);
+			wl_cfgp2p_set_management_ie(cfg, dev, bssidx,
+			VNDR_IE_PRBRSP_FLAG, (u8 *)(buf + ie_offset), ie_len);
 			cfg80211_mgmt_tx_status(cfgdev, *cookie, buf, len, true, GFP_KERNEL);
 			goto exit;
 		} else if (ieee80211_is_disassoc(mgmt->frame_control) ||
@@ -9240,6 +9242,7 @@ wl_notify_gscan_event(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			} else
 				err = -ENOMEM;
 			break;
+#ifdef DHD_ANQPO_SUPPORT
 		case WLC_E_PFN_NET_FOUND:
 			ptr = dhd_dev_process_anqpo_result(ndev, data, event, &len);
 			if (ptr) {
@@ -9249,6 +9252,7 @@ wl_notify_gscan_event(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			} else
 				err = -ENOMEM;
 			break;
+#endif /* DHD_ANQPO_SUPPORT */
 		default:
 			WL_ERR(("Unknown event %d\n", event));
 			break;
@@ -9796,7 +9800,9 @@ static void wl_init_event_handler(struct bcm_cfg80211 *cfg)
 	cfg->evt_handler[WLC_E_PFN_BSSID_NET_FOUND] = wl_notify_gscan_event;
 	cfg->evt_handler[WLC_E_PFN_BSSID_NET_LOST] = wl_notify_gscan_event;
 	cfg->evt_handler[WLC_E_PFN_SSID_EXT] = wl_notify_gscan_event;
+#ifdef DHD_ANQPO_SUPPORT
 	cfg->evt_handler[WLC_E_GAS_FRAGMENT_RX] = wl_notify_gscan_event;
+#endif /* DHD_ANQPO_SUPPORT */
 	cfg->evt_handler[WLC_E_ROAM_EXP_EVENT] = wl_handle_roam_exp_event;
 #endif /* GSCAN_SUPPORT */
 	cfg->evt_handler[WLC_E_RSSI_LQM] = wl_handle_rssi_monitor_event;
@@ -9997,8 +10003,12 @@ wl_cfg80211_netdev_notifier_call(struct notifier_block * nb,
 {
 	struct bcm_cfg80211 *cfg =
 		container_of(nb, struct bcm_cfg80211, netdev_notifier);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0))
+	struct net_device *dev = info;
+#else
 	struct netdev_notifier_info *data = (struct netdev_notifier_info *)info;
 	struct net_device *dev = data->dev;
+#endif
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 
 	/* We need to be careful when using passed in net_device since

@@ -119,6 +119,15 @@
 #endif
 	.endm
 
+/*
+ * NOP sequence
+ */
+	.macro	nops, num
+	.rept	\num
+	nop
+	.endr
+	.endm
+
 #define USER(l, x...)				\
 9999:	x;					\
 	.section __ex_table,"a";		\
@@ -297,13 +306,6 @@ lr	.req	x30		// link register
 	.endm
 
 /*
- * Return the current thread_info.
- */
-	.macro	get_thread_info, rd
-	mrs	\rd, sp_el0
-	.endm
-
-/*
  * Annotate a function as position independent, i.e., safe to be called before
  * the kernel virtual mapping is activated.
  */
@@ -313,5 +315,12 @@ lr	.req	x30		// link register
 	.set	__pi_##x, x;		\
 	.size	__pi_##x, . - x;	\
 	ENDPROC(x)
+
+/*
+ * Return the current thread_info.
+ */
+	.macro	get_thread_info, rd
+	mrs	\rd, sp_el0
+	.endm
 
 #endif	/* __ASM_ASSEMBLER_H */
