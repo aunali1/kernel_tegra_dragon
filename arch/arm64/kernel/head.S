@@ -29,6 +29,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/cache.h>
 #include <asm/cputype.h>
+#include <asm/kasan.h>
 #include <asm/kernel-pgtable.h>
 #include <asm/memory.h>
 #include <asm/thread_info.h>
@@ -653,6 +654,7 @@ ENTRY(__secondary_switched)
 	and	x0, x0, #~(THREAD_SIZE - 1)
 	msr	sp_el0, x0			// save thread_info
 	mov	x29, #0
+	kasan_unpoison_stack
 	b	secondary_start_kernel
 ENDPROC(__secondary_switched)
 

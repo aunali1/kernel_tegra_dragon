@@ -2,6 +2,7 @@
 #include <linux/linkage.h>
 #include <asm/asm-offsets.h>
 #include <asm/assembler.h>
+#include <asm/kasan.h>
 
 	.text
 /*
