@@ -71,7 +71,7 @@ if [[ "${compression}" == "lzma" ]]; then
 	lzma -9 -z -f -k "${image_path}" || die
 	image_path="${image_path}.lzma"
 elif [[ "${compression}" == "lz4" ]]; then
-	lz4 -20 -z -f "${image_path}" "${image_path}.lz4" || die
+	lz4 -9 -z -f "${image_path}" "${image_path}.lz4" || die
 	image_path="${image_path}.lz4"
 elif [[ "${compression}" != "none" ]]; then
 	>&2 echo "ERROR: compression method unknown"
