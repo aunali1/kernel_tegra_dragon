@@ -8,6 +8,7 @@ CFLAGS_efi-stub.o 	:= -DTEXT_OFFSET=$(TEXT_OFFSET)
 CFLAGS_armv8_deprecated.o := -I$(src)
 
 KASAN_SANITIZE_efi-stub.o	:= n
+GCOV_PROFILE_efi-stub.o		:= n
 KCOV_INSTRUMENT_efi-stub.o	:= n
 
 CFLAGS_REMOVE_ftrace.o = -pg
