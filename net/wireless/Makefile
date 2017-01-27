@@ -17,7 +17,7 @@ cfg80211-$(CONFIG_CFG80211_INTERNAL_REGDB) += regdb.o
 
 CFLAGS_trace.o := -I$(src)
 
-ccflags-y += -D__CHECK_ENDIAN__
+ccflags-y += -D__CHECK_ENDIAN__ -Wno-error
 
 $(obj)/regdb.c: $(src)/db.txt $(src)/genregdb.awk
 	@$(AWK) -f $(srctree)/$(src)/genregdb.awk < $< > $@
