@@ -543,6 +543,7 @@ struct sdhci_ops {
 					 int card_drv, int *drv_type);
 	void	(*init_card)(struct sdhci_host *host, struct mmc_card *card);
 	int	(*get_max_tuning_iterations)(struct sdhci_host *sdhci);
+	void	(*platform_set_cdr)(struct sdhci_host *host, bool);
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS

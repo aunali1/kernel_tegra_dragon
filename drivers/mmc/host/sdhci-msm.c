@@ -409,10 +409,28 @@ static const struct of_device_id sdhci_msm_dt_match[] = {
 	{},
 };
 
+static void sdhci_msm_set_cdr(struct sdhci_host *host, bool enable_cdr)
+{
+	u32 config, oldconfig = readl_relaxed(host->ioaddr + CORE_DLL_CONFIG);
+
+	config = oldconfig;
+	if (enable_cdr) {
+		config |= CORE_CDR_EN;
+		config &= ~CORE_CDR_EXT_EN;
+	} else {
+		config &= ~CORE_CDR_EN;
+		config |= CORE_CDR_EXT_EN;
+	}
+
+	if (config != oldconfig)
+		writel_relaxed(config, host->ioaddr + CORE_DLL_CONFIG);
+}
+
 MODULE_DEVICE_TABLE(of, sdhci_msm_dt_match);
 
 static struct sdhci_ops sdhci_msm_ops = {
 	.platform_execute_tuning = sdhci_msm_execute_tuning,
+	.platform_set_cdr = sdhci_msm_set_cdr,
 	.reset = sdhci_reset,
 	.set_clock = sdhci_set_clock,
 	.set_bus_width = sdhci_set_bus_width,

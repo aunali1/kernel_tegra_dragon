@@ -940,6 +940,18 @@ static void sdhci_set_transfer_mode(struct sdhci_host *host,
 
 	if (data->flags & MMC_DATA_READ)
 		mode |= SDHCI_TRNS_READ;
+
+	if (host->ops->platform_set_cdr) {
+		bool cdr_val = (data->flags & MMC_DATA_READ) &&
+				(cmd->opcode != MMC_SEND_TUNING_BLOCK_HS200) &&
+				(cmd->opcode != MMC_SEND_TUNING_BLOCK);
+
+		if (data->flags & MMC_DATA_WRITE)
+			cdr_val = false;
+
+		host->ops->platform_set_cdr(host, cdr_val);
+	}
+
 	if (host->flags & SDHCI_REQ_USE_DMA)
 		mode |= SDHCI_TRNS_DMA;
 
