@@ -1165,13 +1165,13 @@ static int zram_open(struct block_device *bdev, fmode_t mode)
 	atomic64_inc(&zram->stats.notify_free);
 }
 
-void zram_release(struct gendisk *disk, fmode_t mode)
+static void zram_release(struct gendisk *disk, fmode_t mode)
 {
 	struct zram *zram = disk->private_data;
 	atomic_dec(&zram->nr_opens);
 }
 
-int zram_open(struct block_device *bdev, fmode_t mode)
+static int zram_open(struct block_device *bdev, fmode_t mode)
 {
 	struct zram *zram = bdev->bd_disk->private_data;
 	/*
@@ -1200,6 +1200,8 @@ int zram_open(struct block_device *bdev, fmode_t mode)
 
 	return 0;
 busy:
+	pr_warning("open attempted while zram%d claimed (count: %d)\n",
+			zram->disk->first_minor, open_count);
 	atomic_dec(&zram->nr_opens);
 	return -EBUSY;
 }
