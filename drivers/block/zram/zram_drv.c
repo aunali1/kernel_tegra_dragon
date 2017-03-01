@@ -1134,6 +1134,23 @@ static int zram_open(struct block_device *bdev, fmode_t mode)
 
 	WARN_ON(!mutex_is_locked(&bdev->bd_mutex));
 	zram = bdev->bd_disk->private_data;
+	meta = zram->meta;
+
+	bit_spin_lock(ZRAM_ACCESS, &meta->table[index].value);
+	zram_free_page(zram, index);
+	bit_spin_unlock(ZRAM_ACCESS, &meta->table[index].value);
+	atomic64_inc(&zram->stats.notify_free);
+}
+
+static void zram_release(struct gendisk *disk, fmode_t mode)
+{
+	struct zram *zram = disk->private_data;
+	atomic_dec(&zram->nr_opens);
+}
+
+static int zram_open(struct block_device *bdev, fmode_t mode)
+{
+	struct zram *zram = bdev->bd_disk->private_data;
 	/*
 	 * Chromium OS specific behavior:
 	 * sys_swapon opens the device once to populate its swapinfo->swap_file
@@ -1160,6 +1177,8 @@ static int zram_open(struct block_device *bdev, fmode_t mode)
 
 	return 0;
 busy:
+	pr_warning("open attempted while zram%d claimed (count: %d)\n",
+			zram->disk->first_minor, open_count);
 	atomic_dec(&zram->nr_opens);
 	return -EBUSY;
 }
