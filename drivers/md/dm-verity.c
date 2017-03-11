@@ -828,8 +828,7 @@ static char *positional_args(unsigned argc, char **argv,
 	if (argc != DM_VERITY_NUM_POSITIONAL_ARGS)
 		return "Invalid argument count: exactly 10 arguments required";
 
-	if (sscanf(argv[0], "%d%c", &num, &dummy) != 1 ||
-	    num < 0 || num > 1)
+	if (sscanf(argv[0], "%d%c", &num, &dummy) != 1)
 		return "Invalid version";
 	args->version = num;
 
@@ -951,15 +950,21 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 {
 	struct verity_args args = { 0 };
 	struct dm_verity *v;
+	unsigned int num;
+	char dummy;
 	int r;
 	int i;
 	sector_t hash_position;
 
 	args.error_behavior = error_behavior;
-	if (argc == DM_VERITY_NUM_POSITIONAL_ARGS)
-		ti->error = positional_args(argc, argv, &args);
-	else
+
+	if (sscanf(argv[0], "%u%c", &num, &dummy) != 1 ||
+	    num < 0 || num > 1)
+		ti->error = "Invalid version";
+	else if (num == 0)
 		ti->error = chromeos_args(argc, argv, &args);
+	else if (num == 1)
+		ti->error = positional_args(argc, argv, &args);
 	if (ti->error)
 		return -EINVAL;
 	if (0)
