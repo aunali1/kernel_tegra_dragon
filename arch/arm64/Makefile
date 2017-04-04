@@ -36,6 +36,12 @@ CHECKFLAGS	+= -D__aarch64__
 # Default value
 head-y		:= arch/arm64/kernel/head.o
 
+# SoC Optimizations
+ifeq ($(CONFIG_ARM64_CORTEX_A57_A53_OPTIMIZATION), y)
+KBUILD_CFLAGS += -mtune=cortex-a57.cortex-a53 -mcpu=cortex-a57.cortex-a53
+KBUILD_AFLAGS += -mtune=cortex-a57.cortex-a53 -mcpu=cortex-a57.cortex-a53
+endif
+
 # The byte offset of the kernel image in RAM from the start of RAM.
 ifeq ($(CONFIG_ARM64_RANDOMIZE_TEXT_OFFSET), y)
 TEXT_OFFSET := $(shell awk 'BEGIN {srand(); printf "0x%03x000\n", int(512 * rand())}')

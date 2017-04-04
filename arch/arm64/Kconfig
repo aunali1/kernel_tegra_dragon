@@ -467,6 +467,19 @@ config ARM64_VA_BITS_48
 
 endchoice
 
+menu "ARM SoC Optimizations"
+
+config ARM64_CORTEX_A57_A53_OPTIMIZATION
+	bool "ARM Cortex A57/Cortex A53 Complex Optimizations"
+	default n
+	help
+	  Enables compiler-based optimizations for SoCs employing
+	  an ARM Cortex A57/Cortex A53 complex.
+
+	  If unsure, say N.
+
+endmenu
+
 config ARM64_VA_BITS
 	int
 	default 39 if ARM64_VA_BITS_39
