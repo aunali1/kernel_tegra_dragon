@@ -1325,6 +1325,14 @@ config CC_OPTIMIZE_FOR_SIZE
 
 	  If unsure, say N.
 
+config CC_DISABLE_MAYBE_UNINITIALIZED
+	bool "Disable maybe-uninitialized warning."
+	depends on !CC_OPTIMIZE_FOR_SIZE
+	help
+	  Enabling this option will disable -Wmaybe-uninitialized.
+
+	  If unsure. say N.
+
 config SYSCTL
 	bool
 
