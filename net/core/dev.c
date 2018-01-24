@@ -1611,24 +1611,19 @@ EXPORT_SYMBOL(call_netdevice_notifiers);
 
 static struct static_key netstamp_needed __read_mostly;
 #ifdef HAVE_JUMP_LABEL
-/* We are not allowed to call static_key_slow_dec() from irq context
- * If net_disable_timestamp() is called from irq context, defer the
- * static_key_slow_dec() calls.
- */
 static atomic_t netstamp_needed_deferred;
+static void netstamp_clear(struct work_struct *work)
+{
+	int deferred = atomic_xchg(&netstamp_needed_deferred, 0);
+
+	while (deferred--)
+		static_key_slow_dec(&netstamp_needed);
+}
+static DECLARE_WORK(netstamp_work, netstamp_clear);
 #endif
 
 void net_enable_timestamp(void)
 {
-#ifdef HAVE_JUMP_LABEL
-	int deferred = atomic_xchg(&netstamp_needed_deferred, 0);
-
-	if (deferred) {
-		while (--deferred)
-			static_key_slow_dec(&netstamp_needed);
-		return;
-	}
-#endif
 	static_key_slow_inc(&netstamp_needed);
 }
 EXPORT_SYMBOL(net_enable_timestamp);
@@ -1636,12 +1631,12 @@ EXPORT_SYMBOL(net_enable_timestamp);
 void net_disable_timestamp(void)
 {
 #ifdef HAVE_JUMP_LABEL
-	if (in_interrupt()) {
-		atomic_inc(&netstamp_needed_deferred);
-		return;
-	}
-#endif
+	/* net_disable_timestamp() can be called from non process context */
+	atomic_inc(&netstamp_needed_deferred);
+	schedule_work(&netstamp_work);
+#else
 	static_key_slow_dec(&netstamp_needed);
+#endif
 }
 EXPORT_SYMBOL(net_disable_timestamp);
 
@@ -2457,11 +2452,12 @@ static inline bool skb_needs_check(struct sk_buff *skb, bool tx_path)
 struct sk_buff *__skb_gso_segment(struct sk_buff *skb,
 				  netdev_features_t features, bool tx_path)
 {
+	struct sk_buff *segs;
+
 	if (unlikely(skb_needs_check(skb, tx_path))) {
 		int err;
 
-		skb_warn_bad_offload(skb);
-
+		/* We're going to init ->check field in TCP or UDP header */
 		err = skb_cow_head(skb, 0);
 		if (err < 0)
 			return ERR_PTR(err);
@@ -2473,7 +2469,12 @@ struct sk_buff *__skb_gso_segment(struct sk_buff *skb,
 	skb_reset_mac_header(skb);
 	skb_reset_mac_len(skb);
 
-	return skb_mac_gso_segment(skb, features);
+	segs = skb_mac_gso_segment(skb, features);
+
+	if (unlikely(skb_needs_check(skb, tx_path)))
+		skb_warn_bad_offload(skb);
+
+	return segs;
 }
 EXPORT_SYMBOL(__skb_gso_segment);
 

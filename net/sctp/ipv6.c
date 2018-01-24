@@ -316,14 +316,13 @@ static void sctp_v6_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 			}
 		}
 	}
-	rcu_read_unlock();
-
 	if (baddr) {
 		fl6->saddr = baddr->v6.sin6_addr;
 		fl6->fl6_sport = baddr->v6.sin6_port;
 		final_p = fl6_update_dst(fl6, np->opt, &final);
 		dst = ip6_dst_lookup_flow(sk, fl6, final_p);
 	}
+	rcu_read_unlock();
 
 out:
 	if (!IS_ERR_OR_NULL(dst)) {
@@ -491,7 +490,9 @@ static void sctp_v6_to_addr(union sctp_addr *addr, struct in6_addr *saddr,
 {
 	addr->sa.sa_family = AF_INET6;
 	addr->v6.sin6_port = port;
+	addr->v6.sin6_flowinfo = 0;
 	addr->v6.sin6_addr = *saddr;
+	addr->v6.sin6_scope_id = 0;
 }
 
 /* Compare addresses exactly.
