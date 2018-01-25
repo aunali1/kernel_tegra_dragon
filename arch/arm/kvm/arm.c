@@ -648,8 +648,7 @@ int kvm_vm_ioctl_irq_line(struct kvm *kvm, struct kvm_irq_level *irq_level,
 		if (!irqchip_in_kernel(kvm))
 			return -ENXIO;
 
-		if (irq_num < VGIC_NR_PRIVATE_IRQS ||
-		    irq_num > KVM_ARM_IRQ_GIC_MAX)
+		if (irq_num < VGIC_NR_PRIVATE_IRQS)
 			return -EINVAL;
 
 		return kvm_vgic_inject_irq(kvm, 0, irq_num, level);
@@ -666,6 +665,8 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 	ret = kvm_vcpu_set_target(vcpu, init);
 	if (ret)
 		return ret;
+
+	vcpu_reset_hcr(vcpu);
 
 	/*
 	 * Handle the "start in power-off" case by marking the VCPU as paused.
